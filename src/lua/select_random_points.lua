@@ -8,6 +8,8 @@
 
 require("oltp_common")
 
+print("THis script is invoked\n");
+
 -- Add random_points to the list of standard OLTP options
 sysbench.cmdline.options.random_points =
    {"Number of random points in the IN() clause in generated SELECTs", 10}
@@ -30,6 +32,7 @@ function cleanup()
 end
 
 function thread_init()
+   print("random point selects in thread init\n");
    drv = sysbench.sql.driver()
    con = drv:connect()
 

@@ -289,6 +289,7 @@ static int export_options(lua_State *L)
 
 sb_test_t *sb_load_lua(const char *testname)
 {
+    printf("Loading the lua test:%s\n", testname);
   if (testname != NULL)
   {
     char *tmp = strdup(testname);
@@ -370,8 +371,9 @@ void sb_lua_done(void)
 }
 
 
-/* Initialize Lua script */
-
+/*
+ * Marker4: initialize Lua script
+ */
 int sb_lua_op_init(void)
 {
   if (export_options(gstate))
@@ -397,6 +399,9 @@ int sb_lua_op_init(void)
   return 0;
 }
 
+/*
+ * Marker6:
+ */
 int sb_lua_op_thread_init(int thread_id)
 {
   lua_State * L;
@@ -420,6 +425,7 @@ int sb_lua_op_thread_init(int thread_id)
       call_error(L, THREAD_INIT_FUNC);
       return 1;
     }
+    //Reaches here
   }
 
   return 0;
@@ -427,6 +433,7 @@ int sb_lua_op_thread_init(int thread_id)
 
 int sb_lua_op_thread_run(int thread_id)
 {
+//  printf("ThreadId (%d) Lua thread run START...\n", thread_id);
   lua_State * const L = states[thread_id];
 
   lua_getglobal(L, THREAD_RUN_FUNC);
@@ -437,6 +444,7 @@ int sb_lua_op_thread_run(int thread_id)
     call_error(L, THREAD_RUN_FUNC);
     return 1;
   }
+//  printf("ThreadId (%d) Lua thread run END...\n", thread_id);
 
   return 0;
 }
@@ -925,6 +933,7 @@ static bool sb_lua_custom_command_parallel(const char *name)
 
 static int call_custom_command(lua_State *L)
 {
+//  printf("Calling custom command for thread");
   if (export_options(L))
     return 1;
 
@@ -960,6 +969,7 @@ static int call_custom_command(lua_State *L)
 
 static void *cmd_worker_thread(void *arg)
 {
+//  printf("Creating custom thread\n");
   sb_thread_ctxt_t   *ctxt= (sb_thread_ctxt_t *)arg;
 
   sb_tls_thread_id = ctxt->id;
@@ -976,6 +986,7 @@ static void *cmd_worker_thread(void *arg)
   }
 
   call_custom_command(L);
+//  printf("Closing after completion");
 
   sb_lua_close_state(L);
 
@@ -990,6 +1001,7 @@ int sb_lua_call_custom_command(const char *name)
 
   if (sb_lua_custom_command_parallel(name) && sb_globals.threads > 1)
   {
+    printf("Request for N workers. Creating %d workers", sb_globals.threads);
     int err;
 
     if ((err = sb_thread_create_workers(cmd_worker_thread)))

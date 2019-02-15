@@ -195,6 +195,7 @@ static void db_init(void)
 }
 
 /*
+ * Marker 8:
   Initialize a driver specified by 'name' and return a handle to it
   If NULL is passed as a name, then use the driver passed in --db-driver
   command line option
@@ -206,6 +207,7 @@ db_driver_t *db_create(const char *name)
   db_driver_t    *tmp;
   sb_list_item_t *pos;
 
+//  printf("ThreadId (%d) initiating connection to DB...\n", pthread_self());
   pthread_once(&db_global_once, db_init);
 
   if (!db_global_initialized)
@@ -247,7 +249,7 @@ db_driver_t *db_create(const char *name)
     goto err;
   }
 
-  /* Initialize database driver only once */
+  /* Initialize database driver only once  */
   pthread_mutex_lock(&drv->mutex);
   if (!drv->initialized)
   {
@@ -260,6 +262,9 @@ db_driver_t *db_create(const char *name)
   }
   pthread_mutex_unlock(&drv->mutex);
 
+  /*
+   * mysql_drv_thread_init used here
+   */
   if (drv->ops.thread_init != NULL && drv->ops.thread_init(sb_tls_thread_id))
   {
     log_text(LOG_FATAL, "thread-local driver initialization failed.");
@@ -399,9 +404,9 @@ void db_connection_free(db_conn_t *con)
 }
 
 
-/* Prepare statement */
-
-
+/*
+ * Marker 11: Prepare statement
+ */
 db_stmt_t *db_prepare(db_conn_t *con, const char *query, size_t len)
 {
   db_stmt_t *stmt;
@@ -463,9 +468,9 @@ int db_bind_result(db_stmt_t *stmt, db_bind_t *results, size_t len)
 }
 
 
-/* Execute prepared statement */
-
-
+/*
+ * Marker 15: Execute prepared statement
+ */
 db_result_t *db_execute(db_stmt_t *stmt)
 {
   db_conn_t       *con = stmt->connection;
@@ -484,7 +489,6 @@ db_result_t *db_execute(db_stmt_t *stmt)
   }
 
   rs->statement = stmt;
-
   con->error = con->driver->ops.execute(stmt, rs);
 
   sb_counter_inc(con->thread_id, rs->counter);
@@ -816,6 +820,8 @@ void db_free_row(db_row_t *row)
 
 int db_bulk_insert_init(db_conn_t *con, const char *query, size_t query_len)
 {
+
+//  printf("M1: Bulk Insert init 4 %s ", query);
   drv_caps_t driver_caps;
   int        rc;
 
@@ -866,6 +872,7 @@ int db_bulk_insert_next(db_conn_t *con, const char *query, size_t query_len)
 {
   int rc;
 
+//  printf("M2: Bulk Insert next: %s", query);
   if (con->state == DB_CONN_INVALID)
   {
     log_text(LOG_ALERT, "attempt to use an already closed connection");

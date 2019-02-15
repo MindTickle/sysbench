@@ -38,6 +38,7 @@
 #include "sb_logger.h"
 #include "sysbench.h"
 #include "sb_ck_pr.h"
+#include <unistd.h>
 
 pthread_attr_t  sb_thread_attr;
 
@@ -132,7 +133,11 @@ int sb_thread_create(pthread_t *thread, const pthread_attr_t *attr,
   }
   proxy->start_routine = start_routine;
   proxy->arg = arg;
+  /*
+   * Actual thread creation
+   */
   int rv = pthread_create(thread, attr, thread_start_routine_proxy, proxy);
+  printf("Transaction worker thread created\n");
   if (rv)
   {
     free(proxy);
@@ -155,6 +160,9 @@ int sb_thread_cancel(pthread_t thread)
 #endif
 }
 
+/*
+ * This will create a worker thread and initiate worker_routine in it.
+ */
 int sb_thread_create_workers(void *(*worker_routine)(void*))
 {
   unsigned int i;
@@ -165,7 +173,7 @@ int sb_thread_create_workers(void *(*worker_routine)(void*))
   {
     threads[i].id = i;
   }
-
+  printf("Successfully created %d threads...\n",sb_globals.threads);
 
   for(i = 0; i < sb_globals.threads; i++)
   {

@@ -17,6 +17,16 @@
 -- -----------------------------------------------------------------------------
 -- Common code for OLTP benchmarks.
 -- -----------------------------------------------------------------------------
+--[[
+If you run into this issue:
+mysql> select id from sbtestD1 INTO OUTFILE "~/Downloads/xid.txt";
+ERROR 1 (HY000): Can't create/write to file '/Users/ankurshukla/Downloads/xid.txt' (OS errno 13 - Permission denied)
+
+try https://bit.ly/2DyT32I
+the tmp directory mentioned above is where you can create files.
+]]--
+
+
 
 function init()
    assert(event ~= nil,
@@ -28,6 +38,8 @@ if sysbench.cmdline.command == nil then
    error("Command is required. Supported commands: prepare, warmup, run, " ..
             "cleanup, help")
 end
+
+local unique_id = tostring( {} ):sub(8)
 
 -- Command line options
 sysbench.cmdline.options = {
@@ -84,6 +96,7 @@ sysbench.cmdline.options = {
 -- Prepare the dataset. This command supports parallel execution, i.e. will
 -- benefit from executing with --threads > 1 as long as --tables > 1
 function cmd_prepare()
+   --print(unique_id, "P4:common\n")
    local drv = sysbench.sql.driver()
    local con = drv:connect()
 
@@ -110,9 +123,8 @@ function cmd_warmup()
 
    for i = sysbench.tid % sysbench.opt.threads + 1, sysbench.opt.tables,
    sysbench.opt.threads do
-      local t = "sbtest" .. i
-      print("Preloading table " .. t)
-      con:query("ANALYZE TABLE sbtest" .. i)
+      local t = "sbtestD" .. i
+      con:query("ANALYZE TABLE sbtestD" .. i)
       con:query(string.format(
                    "SELECT AVG(id) FROM " ..
                       "(SELECT * FROM %s FORCE KEY (PRIMARY) " ..
@@ -146,16 +158,112 @@ local c_value_template = "###########-###########-###########-" ..
 local pad_value_template = "###########-###########-###########-" ..
    "###########-###########"
 
+-- 16 digits long
+local user_id_template = "################"
+
+local random_date_template = "#####"
+
+function get_random_date()
+   return sysbench.rand.string(random_date_template)
+end
+
 function get_c_value()
    return sysbench.rand.string(c_value_template)
+end
+
+function get_user_id_value()
+   return sysbench.rand.alphanumeric_string(user_id_template)
+end
+
+function file_exists(file)
+   local f = io.open(file, "rb")
+   if f then
+      f:close()
+   end
+   return f ~= nil
+end
+
+function read_file(file)
+   if not file_exists(file) then
+      print(file.." does not exist")
+      return {}
+   end
+   lines = {}
+   local i=0
+   for line in io.lines(file) do
+      if i >= sysbench.opt.table_size then
+         break
+      end
+      i = i+1
+      lines[#lines +1 ]= line
+   end
+
+--   print(unique_id.." read "..(#lines).." lines")
+   return lines
+end
+
+local user_id, added_on, entity, entity_type, entity_id,
+completion_status, due_on,
+orgId, company,
+version, state =
+"user_id", "added_on", "entity", "entity_type", "entity_id",
+"completion_status", "due_on",
+"orgId", "company",
+"version", "state"
+local current, prev, timestamp = "current", "prev", "timestamp"
+local eLearner_id = "id"
+local separator = ","
+local single_key_string_value_pair = "\"".."%s".."\":".."\"".."%s".."\""
+local single_key_string_value_pair_without_quotes = "\"".."%s".."\":".."%s"
+local single_key_int_value_pair = "\"".."%s".."\":".."%d"
+
+function get_state_map()
+   return "{"..string.format(single_key_string_value_pair, current, get_arbitrary_state())..separator..
+           string.format(single_key_string_value_pair, prev, get_arbitrary_state())..separator..
+           string.format(single_key_int_value_pair, timestamp, get_random_date_long()).."}"
+end
+
+function get_entity_learner_doc(user_id_val, entity_val)
+   return string.format("{"..
+           string.format(single_key_string_value_pair, user_id, user_id_val)..separator..
+           string.format(single_key_int_value_pair, added_on, tonumber("15496"..get_random_date()))..separator..
+           string.format(single_key_int_value_pair, entity, entity_val)..separator..
+           string.format(single_key_string_value_pair, entity_type, get_random_entity_type())..separator..
+           string.format(single_key_string_value_pair, completion_status, get_random_completion_status())..separator..
+           string.format(single_key_int_value_pair, due_on, tonumber(get_random_date_long()))..separator..
+           string.format(single_key_int_value_pair, orgId, math.floor(10000000000000000 + math.random() * 90000000000000000))..separator..
+           string.format(single_key_int_value_pair, company, math.floor(10000000000000000 + math.random() * 90000000000000000))..separator..
+           string.format(single_key_int_value_pair, version, get_random_arbitrary(0, 20))..separator..
+           string.format(single_key_string_value_pair_without_quotes, state, get_state_map())..separator..
+           string.format(single_key_string_value_pair, eLearner_id, user_id_val.."|"..string.format("%.0f",entity_val))..
+           "}")
+
+end
+
+function get_entity_id_value()
+   return math.floor(10000000000000000 + math.random() * 90000000000000000)
+end
+
+function get_learner()
+
 end
 
 function get_pad_value()
    return sysbench.rand.string(pad_value_template)
 end
 
+function get_random_date_long()
+   return sysbench.rand.string(random_date_template .. random_date_template)
+end
+
+function get_random_arbitrary(min, max)
+   return math.floor(math.random() * (max - min + 1)) + min
+end
+
+
 function create_table(drv, con, table_num)
    local id_index_def, id_def
+   local default_char_set, collate
    local engine_def = ""
    local extra_table_options = ""
    local query
@@ -168,12 +276,16 @@ function create_table(drv, con, table_num)
 
    if drv:name() == "mysql"
    then
-      if sysbench.opt.auto_inc then
-         id_def = "INTEGER NOT NULL AUTO_INCREMENT"
-      else
-         id_def = "INTEGER NOT NULL"
-      end
+      --if sysbench.opt.auto_inc then
+      --   id_def = "INTEGER NOT NULL AUTO_INCREMENT"
+      --else
+      --   id_def = "INTEGER NOT NULL"
+      --end
+      id_def = "VARCHAR(255) NOT NULL"
       engine_def = "/*! ENGINE = " .. sysbench.opt.mysql_storage_engine .. " */"
+      default_char_set = "utf8mb4"
+      collate = "utf8mb4_0900_ai_ci"
+
    elseif drv:name() == "pgsql"
    then
       if not sysbench.opt.auto_inc then
@@ -187,95 +299,141 @@ function create_table(drv, con, table_num)
       error("Unsupported database driver:" .. drv:name())
    end
 
-   print(string.format("Creating table 'sbtest%d'...", table_num))
 
-   query = string.format([[
-CREATE TABLE sbtest%d(
-  id %s,
-  k INTEGER DEFAULT '0' NOT NULL,
-  c CHAR(120) DEFAULT '' NOT NULL,
-  pad CHAR(60) DEFAULT '' NOT NULL,
-  %s (id)
-) %s %s]],
+   print(string.format("Creating table 'sbtestD%d'...", table_num))
+
+   query = string.format(
+  "CREATE TABLE sbtestD%d("..
+  "id %s,"..
+  "document JSON,"..
+  user_id.." VARCHAR(255) GENERATED ALWAYS AS (document ->> '$."..user_id.."'),"..
+  added_on.." BIGINT(20) GENERATED ALWAYS AS (document ->> '$."..added_on.."'),"..
+  entity_id.." VARCHAR(255) GENERATED ALWAYS AS (document ->> '$."..entity_id.."'),"..
+  entity_type.." VARCHAR(255) GENERATED ALWAYS AS (document ->> '$."..entity_type.."'),"..
+  completion_status.." VARCHAR(255) GENERATED ALWAYS AS (document ->> '$."..completion_status.."'),"..
+  due_on.." BIGINT(20) GENERATED ALWAYS AS (document ->> '$."..due_on.."'),"..
+  "%s (id),"..
+  "INDEX "..user_id.."("..user_id.."),"..
+  "INDEX "..added_on.."("..added_on.."),"..
+  "INDEX "..entity_id.."("..entity_id.."),"..
+  "INDEX "..entity_type.."("..entity_type.."),"..
+  "INDEX "..completion_status.."("..completion_status.."),"..
+  "INDEX "..due_on.."("..due_on..")"..
+  ") %s %s"..
+" DEFAULT CHARSET %s"..
+" COLLATE %s",
       table_num, id_def, id_index_def, engine_def,
-      sysbench.opt.create_table_options)
+      sysbench.opt.create_table_options, default_char_set, collate)
+   print("ThreadId ("..unique_id..") Created INSERT QUERY:"..query.."...\n")
 
    con:query(query)
 
    if (sysbench.opt.table_size > 0) then
-      print(string.format("Inserting %d records into 'sbtest%d'",
+      print(string.format("ThreadId (%d) Inserting %d records into 'sbtestD%d'...\n", unique_id,
                           sysbench.opt.table_size, table_num))
    end
 
-   if sysbench.opt.auto_inc then
-      query = "INSERT INTO sbtest" .. table_num .. "(k, c, pad) VALUES"
-   else
-      query = "INSERT INTO sbtest" .. table_num .. "(id, k, c, pad) VALUES"
-   end
+   --if sysbench.opt.auto_inc then
+   --   print("Auto inc enabled")
+   --   query = "INSERT INTO sbtestD" .. table_num .. "(eLearner) VALUES"
+   --else
+   --   print("Auto inc not enabled")
+   query = "INSERT INTO sbtestD" .. table_num .. "(id, document) VALUES"
+   --end
 
+   --print(unique_id, "Bulk insert init 1:query before:",query, "\n");
    con:bulk_insert_init(query)
 
-   local c_val
-   local pad_val
-
    for i = 1, sysbench.opt.table_size do
+      local user_id_val = get_user_id_value()
+      local entity_val = get_entity_id_value()
 
-      c_val = get_c_value()
-      pad_val = get_pad_value()
+      local eLearner = get_entity_learner_doc(user_id_val, entity_val)
 
-      if (sysbench.opt.auto_inc) then
-         query = string.format("(%d, '%s', '%s')",
-                               sysbench.rand.default(1, sysbench.opt.table_size),
-                               c_val, pad_val)
-      else
-         query = string.format("(%d, %d, '%s', '%s')",
-                               i,
-                               sysbench.rand.default(1, sysbench.opt.table_size),
-                               c_val, pad_val)
-      end
 
+      query = string.format("('%s', '%s')", user_id_val.."|"..string.format("%.0f",entity_val), eLearner)
+
+      --if (sysbench.opt.auto_inc) then
+      --   query = string.format("(%d, '%s', '%s')",
+      --                         sysbench.rand.default(1, sysbench.opt.table_size),
+      --                         c_val, pad_val)
+      --else
+      --   query = string.format("(%d, %d, '%s', '%s')",
+      --                         i,
+      --                         sysbench.rand.default(1, sysbench.opt.table_size),
+      --                         c_val, pad_val)
+      --end
+
+      --print(unique_id, "Bulk insert init 1:query after:",query, "\n");
       con:bulk_insert_next(query)
    end
 
    con:bulk_insert_done()
 
-   if sysbench.opt.create_secondary then
-      print(string.format("Creating a secondary index on 'sbtest%d'...",
-                          table_num))
-      con:query(string.format("CREATE INDEX k_%d ON sbtest%d(k)",
-                              table_num, table_num))
-   end
+   --if sysbench.opt.create_secondary then
+   --   print(string.format("Creating a secondary index on 'sbtestD%d'...",
+   --                       table_num))
+   --   con:query(string.format("CREATE INDEX k_%d ON sbtestD%d(k)",
+   --                           table_num, table_num))
+   --end
+end
+
+function get_random_entity_type()
+   local available_entity_type = {'ILT', 'COURSE', 'UPDATE', 'ASSESSMENT', 'COACHING', 'MISSION', 'CHECKLIST'}
+   local random_entity_pos = math.random(0,7)
+   return available_entity_type[random_entity_pos]
+end
+
+
+function get_random_completion_status()
+   local availabileCompletionStatus = {"PASS", "FAIL", ""}
+   local randomArbitrary = get_random_arbitrary(0, 3);
+   return availabileCompletionStatus[randomArbitrary]
+end
+
+function get_arbitrary_state()
+   local available_states = {'ACTIVE', 'ADDED', 'DEACTIVATED'};
+   local random_arbitrary = get_random_arbitrary(0, 3);
+   return available_states[random_arbitrary]
 end
 
 local t = sysbench.sql.type
+
+local user_id_val = get_user_id_value()
+local entity_val = get_entity_id_value()
+local eLearner = get_entity_learner_doc(user_id_val, entity_val)
+local id_map = {}
+
 local stmt_defs = {
+
+   --print("P7:Creating point selects"),
    point_selects = {
-      "SELECT c FROM sbtest%u WHERE id=?",
-      t.INT},
+      "SELECT document FROM sbtestD%u WHERE id=?",
+      {t.VARCHAR, 255}},
    simple_ranges = {
-      "SELECT c FROM sbtest%u WHERE id BETWEEN ? AND ?",
-      t.INT, t.INT},
-   sum_ranges = {
-      "SELECT SUM(k) FROM sbtest%u WHERE id BETWEEN ? AND ?",
-       t.INT, t.INT},
+      "SELECT document FROM sbtestD%u WHERE id BETWEEN ? AND ?",
+      {t.VARCHAR, 255}, {t.VARCHAR, 255}},
+   --sum_ranges = {
+   --   "SELECT SUM(k) FROM sbtestD%u WHERE id BETWEEN ? AND ?",
+   --    t.INT, t.INT},
    order_ranges = {
-      "SELECT c FROM sbtest%u WHERE id BETWEEN ? AND ? ORDER BY c",
-       t.INT, t.INT},
+      "SELECT document FROM sbtestD%u WHERE id BETWEEN ? AND ? ORDER BY id",
+      {t.VARCHAR, 255}, {t.VARCHAR, 255}},
    distinct_ranges = {
-      "SELECT DISTINCT c FROM sbtest%u WHERE id BETWEEN ? AND ? ORDER BY c",
-      t.INT, t.INT},
+      "SELECT DISTINCT entity_type FROM sbtestD%u WHERE id BETWEEN ? AND ? ORDER BY completion_status",
+      {t.VARCHAR, 255}, {t.VARCHAR, 255}},
    index_updates = {
-      "UPDATE sbtest%u SET k=k+1 WHERE id=?",
-      t.INT},
+      "UPDATE sbtestD%u SET due_on=due_on+100 WHERE id=?",
+      {t.BIGINT, 20}},
    non_index_updates = {
-      "UPDATE sbtest%u SET c=? WHERE id=?",
-      {t.CHAR, 120}, t.INT},
+      "UPDATE sbtestD%u SET added_on=? WHERE id=?",
+      {t.BIGINT, 20}, {t.BIGINT, 20}},
    deletes = {
-      "DELETE FROM sbtest%u WHERE id=?",
-      t.INT},
+      "DELETE FROM sbtestD%u WHERE id=?",
+      {t.BIGINT, 20}},
    inserts = {
-      "INSERT INTO sbtest%u (id, k, c, pad) VALUES (?, ?, ?, ?)",
-      t.INT, t.INT, {t.CHAR, 120}, {t.CHAR, 60}},
+      "INSERT INTO sbtestD%u (id, document) VALUES (?, ?)",
+      user_id_val.."|"..string.format("%.0f",entity_val), eLearner},
 }
 
 function prepare_begin()
@@ -291,7 +449,6 @@ function prepare_for_each_table(key)
       stmt[t][key] = con:prepare(string.format(stmt_defs[key][1], t))
 
       local nparam = #stmt_defs[key] - 1
-
       if nparam > 0 then
          param[t][key] = {}
       end
@@ -326,9 +483,9 @@ function prepare_simple_ranges()
    prepare_for_each_table("simple_ranges")
 end
 
-function prepare_sum_ranges()
-   prepare_for_each_table("sum_ranges")
-end
+--function prepare_sum_ranges()
+--   prepare_for_each_table("sum_ranges")
+--end
 
 function prepare_order_ranges()
    prepare_for_each_table("order_ranges")
@@ -352,6 +509,7 @@ function prepare_delete_inserts()
 end
 
 function thread_init()
+--   print("ThreadId"..unique_id.." Creating connection with DB...\n")
    drv = sysbench.sql.driver()
    con = drv:connect()
 
@@ -360,11 +518,13 @@ function thread_init()
    -- of connection/table/query
    stmt = {}
    param = {}
-
    for t = 1, sysbench.opt.tables do
       stmt[t] = {}
       param[t] = {}
    end
+
+   -- Read the file for static Ids against which data will be read from table(s)
+   id_map = read_file("/var/lib/mysql/tmp/xid.txt")
 
    -- This function is a 'callback' defined by individual benchmark scripts
    prepare_statements()
@@ -391,12 +551,13 @@ function thread_done()
 end
 
 function cleanup()
+   print("P8:Dropping table")
    local drv = sysbench.sql.driver()
    local con = drv:connect()
 
    for i = 1, sysbench.opt.tables do
-      print(string.format("Dropping table 'sbtest%d'...", i))
-      con:query("DROP TABLE IF EXISTS sbtest" .. i )
+      print(string.format("Dropping table 'sbtestD%d'...", i))
+      con:query("DROP TABLE IF EXISTS sbtestD" .. i )
    end
 end
 
@@ -408,6 +569,11 @@ local function get_id()
    return sysbench.rand.default(1, sysbench.opt.table_size)
 end
 
+local function get_random_id()
+   local pos = sysbench.rand.uniform(1, sysbench.opt.table_size)
+   return sysbench.rand.string(id_map[pos])
+end
+
 function begin()
    stmt.begin:execute()
 end
@@ -416,15 +582,20 @@ function commit()
    stmt.commit:execute()
 end
 
+function sleep(n)
+   os.execute("sleep "..tonumber(n))
+end
+
 function execute_point_selects()
    local tnum = get_table_num()
    local i
 
+--   print("\n\nThreadId "..unique_id.." initiating TRX on table "..tnum.."...\n")
    for i = 1, sysbench.opt.point_selects do
-      param[tnum].point_selects[1]:set(get_id())
-
+      param[tnum].point_selects[1]:set(get_random_id())
       stmt[tnum].point_selects:execute()
    end
+--   print("ThreadId "..unique_id.." ending TRX on table "..tnum.."...\n\n")
 end
 
 local function execute_range(key)
