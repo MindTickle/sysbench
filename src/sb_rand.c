@@ -343,6 +343,20 @@ void sb_rand_str(const char *fmt, char *buf)
   }
 }
 
+void sb_rand_alphanumeric_str(const char *fmt, char *buf)
+{
+  unsigned int i;
+
+  for (i=0; fmt[i] != '\0'; i++)
+  {
+//    printf("Randomly generating: %c\n", sb_rand_uniform('0', '2'));
+    if(fmt[i] == '#' || fmt[i] == '@')
+        buf[i] = (sb_rand_uniform('0', '1') == '0'? sb_rand_uniform('0', '9'): sb_rand_uniform('a', 'z'));
+    else
+      buf[i] = fmt[i];
+  }
+}
+
 /*
   Generates a random string of ASCII characters between '0' and 'z' of a length
   between min and max. buf should have enough room for max len bytes. Returns

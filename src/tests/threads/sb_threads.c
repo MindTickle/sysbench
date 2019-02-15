@@ -101,7 +101,7 @@ int threads_prepare(void)
     log_text(LOG_FATAL, "Memory allocation failure!");
     return 1;
   }
-  
+  //Marker5: Mutex acquisition
   for(i = 0; i < thread_locks; i++)
     pthread_mutex_init(test_mutexes + i, NULL);
 

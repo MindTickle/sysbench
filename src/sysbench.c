@@ -777,17 +777,21 @@ static int thread_run(sb_test_t *test, int thread_id)
   sb_event_t        event;
   int               rc = 0;
 
+  printf("thread_run 123\n");
   while (sb_more_events(thread_id) && rc == 0)
   {
     event = test->ops.next_event(thread_id);
     if (event.type == SB_REQ_TYPE_NULL)
       break;
 
+    printf("Starting event\n");
     sb_event_start(thread_id);
 
     rc = test->ops.execute_event(&event, thread_id);
 
+
     sb_event_stop(thread_id);
+    printf("Event Stopped\n");
   }
 
   return rc;
@@ -807,12 +811,16 @@ static void *worker_thread(void *arg)
   sb_test_t * const test = current_test;
 
   sb_tls_thread_id = thread_id = ctxt->id;
+//  printf("ThreadId (%d) running...\n", thread_id);
 
   /* Initialize thread-local RNG state */
   sb_rand_thread_init();
 
   log_text(LOG_DEBUG, "Worker thread (#%d) started", thread_id);
 
+  /*
+   * Using static sb_operations_t lua_ops from sb_lua.c (method sb_lua_op_thread_init(int thread_id))
+   */
   if (test->ops.thread_init != NULL && test->ops.thread_init(thread_id) != 0)
   {
     log_text(LOG_DEBUG, "Worker thread (#%d) failed to initialize!", thread_id);
@@ -821,16 +829,21 @@ static void *worker_thread(void *arg)
     sb_barrier_wait(&worker_barrier);
     return NULL;
   }
-
   log_text(LOG_DEBUG, "Worker thread (#%d) initialized", thread_id);
 
   /* Wait for other threads to initialize */
+  /*
+   * Even if this barrir is removed, thread run must also remove this condition. Or else the thread run fails.
+   */
   if (sb_barrier_wait(&worker_barrier) < 0)
     return NULL;
 
   if (test->ops.thread_run != NULL)
   {
     /* Use benchmark-provided thread_run implementation */
+    /*
+     * Check this mapping sbtest.ops.thread_run = &sb_lua_op_thread_run; to know where this is called from
+     */
     rc = test->ops.thread_run(thread_id);
   }
   else
@@ -1056,6 +1069,7 @@ static int threads_started_callback(void *arg)
 
 static int run_test(sb_test_t *test)
 {
+
   int          err;
   pthread_t    report_thread;
   pthread_t    checkpoints_thread;
@@ -1066,7 +1080,7 @@ static int run_test(sb_test_t *test)
   /* initialize test */
   if (test->ops.init != NULL && test->ops.init() != 0)
     return 1;
-  
+
   /* print test mode */
   print_run_mode(test);
 
@@ -1120,6 +1134,7 @@ static int run_test(sb_test_t *test)
 
   if (sb_globals.tx_rate > 0)
   {
+    printf("Trx rate >0\n");
     if ((err = sb_thread_create(&eventgen_thread, &sb_thread_attr,
                                 &eventgen_thread_proc, NULL)) != 0)
     {
@@ -1298,6 +1313,7 @@ static int init(void)
   sb_list_item_t    *pos_val;
   value_t           *val;
 
+  printf("Setting globals and initializing timers...%d\n", pthread_self());
   sb_globals.threads = sb_get_value_int("threads");
 
   thread_init_timeout = sb_get_value_int("thread-init-timeout");
@@ -1434,9 +1450,12 @@ static int init(void)
   return 0;
 }
 
-
+/*
+Starting point for the flows
+*/
 int main(int argc, char *argv[])
 {
+  printf("Starting main thread...%d\n", pthread_self());
   sb_test_t *test = NULL;
   int rc;
 

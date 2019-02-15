@@ -5767,6 +5767,7 @@ struct CallS*c=cast(struct CallS*,ud);
 luaD_call(L,c->func,c->nresults);
 }
 static int lua_pcall(lua_State*L,int nargs,int nresults,int errfunc){
+    printf("inside lua call..\n");
 struct CallS c;
 int status;
 ptrdiff_t func;

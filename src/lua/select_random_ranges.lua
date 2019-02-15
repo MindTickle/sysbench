@@ -8,6 +8,8 @@
 
 require("oltp_common")
 
+print("Random selector is being used\n");
+
 -- Add --number-of-ranges and --delta to the list of standard OLTP options
 sysbench.cmdline.options.number_of_ranges =
    {"Number of random BETWEEN ranges per SELECT", 10}

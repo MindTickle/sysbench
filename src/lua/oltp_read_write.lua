@@ -20,8 +20,10 @@
 -- ----------------------------------------------------------------------
 
 require("oltp_common")
+local unique_id = tostring( {} ):sub(8)
 
 function prepare_statements()
+   print(unique_id,"Write prepare invoked now\n");
    if not sysbench.opt.skip_trx then
       prepare_begin()
       prepare_commit()

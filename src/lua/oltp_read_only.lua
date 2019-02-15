@@ -19,9 +19,19 @@
 -- Read-Only OLTP benchmark
 -- ----------------------------------------------------------------------
 
+--[[
+   If you run into these problems-
+   1. ld: library not found for -lssl,
+   https://stackoverflow.com/questions/25979525/cannot-find-lssl-cannot-find-lcrypto-when-installing-mysql-python-using-mar
+   2. ld: library not found for -lgcc, export MACOSX_DEPLOYMENT_TARGET=10.10
+]]--
 require("oltp_common")
 
+local unique_id = tostring( {} ):sub(8)
+
+-- Marker 9
 function prepare_statements()
+--   print("ThreadId "..unique_id.." preparing statements...\n")
    prepare_point_selects()
 
    if not sysbench.opt.skip_trx then
@@ -31,12 +41,13 @@ function prepare_statements()
 
    if sysbench.opt.range_selects then
       prepare_simple_ranges()
-      prepare_sum_ranges()
+      --prepare_sum_ranges()
       prepare_order_ranges()
       prepare_distinct_ranges()
    end
 end
 
+-- Marker 13
 function event()
    if not sysbench.opt.skip_trx then
       begin()

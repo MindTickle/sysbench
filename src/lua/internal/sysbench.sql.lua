@@ -18,6 +18,10 @@
 -- SQL API
 -- ----------------------------------------------------------------------
 
+--[[
+   The FFI library allows calling external C functions and using C data structures from pure Lua code.
+   http://luajit.org/ext_ffi.html
+]]--
 ffi = require("ffi")
 
 sysbench.sql = {}
@@ -287,6 +291,7 @@ function connection_methods.bulk_insert_done(self)
                  "db_bulk_insert_done() failed")
 end
 
+-- Marker 10
 function connection_methods.prepare(self, query)
    local stmt = ffi.C.db_prepare(self, query, #query)
    if stmt == nil then
@@ -318,6 +323,8 @@ ffi.metatype("sql_connection", connection_mt)
 
 -- sql_param
 local sql_param = {}
+
+-- Marker 16
 function sql_param.set(self, value)
    local sql_type = sysbench.sql.type
    local btype = self.type
@@ -428,6 +435,7 @@ function statement_methods.bind_param(self, ...)
    return ffi.C.db_bind_param(self, binds, len)
 end
 
+-- Marker 14
 function statement_methods.execute(self)
    local rs = ffi.C.db_execute(self)
    return self.connection:check_error(rs, '<prepared statement>')

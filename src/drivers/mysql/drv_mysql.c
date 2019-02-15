@@ -269,7 +269,10 @@ int register_driver_mysql(sb_list_t *drivers)
 }
 
 
-/* MySQL driver initialization */
+/*
+ * Marker 9
+ * MySQL driver initialization
+*/
 
 
 int mysql_drv_init(void)
@@ -343,6 +346,7 @@ int mysql_drv_init(void)
 
   DEBUG("mysql_library_init(%d, %p, %p)", 0, NULL, NULL);
   mysql_library_init(0, NULL, NULL);
+  printf("ThreadId (%d) returning from mysql driver init...\n", pthread_self());
 
   return 0;
 }
@@ -351,8 +355,13 @@ int mysql_drv_init(void)
 
 int mysql_drv_thread_init(int thread_id)
 {
+  printf("ThreadId (%d) MySql thread init %d...\n", pthread_self(), thread_id);
   (void) thread_id; /* unused */
 
+  /*
+   * This function must be called early within each created thread to initialize thread-specific variables.
+   * 0 for success
+   */
   const my_bool rc = mysql_thread_init();
   DEBUG("mysql_thread_init() = %d", (int) rc);
 
@@ -549,10 +558,9 @@ int mysql_drv_disconnect(db_conn_t *sb_conn)
   return 0;
 }
 
-
-/* Prepare statement */
-
-
+/*
+ * Marker 12: Prepare statement
+ */
 int mysql_drv_prepare(db_stmt_t *stmt, const char *query, size_t len)
 {
   MYSQL_STMT *mystmt;
@@ -601,7 +609,6 @@ int mysql_drv_prepare(db_stmt_t *stmt, const char *query, size_t len)
         return 1;
       }
     }
-
     stmt->query = strdup(query);
     stmt->counter = (mysql_stmt_field_count(mystmt) > 0) ?
       SB_CNT_READ : SB_CNT_WRITE;
@@ -779,6 +786,7 @@ static int mysql_drv_reconnect(db_conn_t *sb_con)
 static db_error_t check_error(db_conn_t *sb_con, const char *func,
                               const char *query, sb_counter_type_t *counter)
 {
+  printf("Checking error\n");
   sb_list_item_t *pos;
   unsigned int   tmp;
   db_mysql_conn_t *db_mysql_con = (db_mysql_conn_t *) sb_con->ptr;
@@ -844,8 +852,9 @@ static db_error_t check_error(db_conn_t *sb_con, const char *func,
   return DB_ERROR_FATAL;
 }
 
-/* Execute prepared statement */
-
+/*
+ * Marker 17: Execute prepared statement
+ */
 
 db_error_t mysql_drv_execute(db_stmt_t *stmt, db_result_t *rs)
 {
@@ -873,6 +882,7 @@ db_error_t mysql_drv_execute(db_stmt_t *stmt, db_result_t *rs)
     }
 
     int err = mysql_stmt_execute(stmt->ptr);
+    printf("ThreadId (%d), mysql executed(%p), %d...\n", pthread_self(), stmt->ptr, err);
     DEBUG("mysql_stmt_execute(%p) = %d", stmt->ptr, err);
 
     if (err)
@@ -950,9 +960,9 @@ db_error_t mysql_drv_execute(db_stmt_t *stmt, db_result_t *rs)
 }
 
 
-/* Execute SQL query */
-
-
+/*
+ * Marker 18:Execute SQL query
+ */
 db_error_t mysql_drv_query(db_conn_t *sb_conn, const char *query, size_t len,
                            db_result_t *rs)
 {
@@ -969,6 +979,10 @@ db_error_t mysql_drv_query(db_conn_t *sb_conn, const char *query, size_t len,
   db_mysql_con = (db_mysql_conn_t *)sb_conn->ptr;
   con = db_mysql_con->mysql;
 
+/*
+Real execution happens here. This function returns the execution state as an int, and not the actual query response.
+*/
+//  printf("ThreadId (%d) Executing QUERY:(%s)...\n", pthread_self(), query);
   int err = mysql_real_query(con, query, len);
   DEBUG("mysql_real_query(%p, \"%s\", %zd) = %d", con, query, len, err);
 
@@ -977,12 +991,22 @@ db_error_t mysql_drv_query(db_conn_t *sb_conn, const char *query, size_t len,
 
   /* Store results and get query type */
   MYSQL_RES *res = mysql_store_result(con);
+//  unsigned long rows_number = (unsigned long) mysql_num_rows (res);
+//  MYSQL_ROW row;
+//  while ((row = mysql_fetch_row(res)) != NULL) {
+//    for (unsigned int i = 0; i < mysql_num_fields(res); i++) {
+//      printf ("%s \n",row[i]);
+//    }
+//  }
   DEBUG("mysql_store_result(%p) = %p", con, res);
 
   if (res == NULL)
   {
+//      printf("ThreadId (%d), got NULL. Error#:(%d) & mysql_field_count:(%d)...\n", pthread_self(), mysql_errno(con), mysql_field_count(con));
+//    printf("ThreadId (%d), got NULL for QUERY:(%s). Error#:(%d) & mysql_field_count:(%d)...\n", pthread_self(), query, mysql_errno(con), mysql_field_count(con));
     if (mysql_errno(con) == 0 && mysql_field_count(con) == 0)
     {
+
       /* Not a select. Check if it was a DML */
       uint32_t nrows = (uint32_t) mysql_affected_rows(con);
       if (nrows > 0)
